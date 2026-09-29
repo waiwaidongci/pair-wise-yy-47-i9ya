@@ -55,6 +55,18 @@ body { min-width: 320px; }
 .report-sheet table { width: 100%; margin-top: 18px; border-collapse: collapse; font-size: 12px; }
 .report-sheet th, .report-sheet td { padding: 9px; border: 1px solid #dbe2e5; text-align: left; }
 .report-sheet th { background: #edf3f4; }
+.report-sheet table { min-width: 980px; }
+.table-wrap, .report-sheet { overflow-x: auto; }
+.batch-blocked-row td { background: #fff5f5; }
+.stale-block { margin-top: 18px; padding: 14px; border: 1px solid #ffa39e; border-radius: 8px; background: #fff2f0; }
+
+@media print {
+  .no-print { display: none !important; }
+  .stale-report-page .stale-report { display: none !important; }
+  .stale-report-page::after { content: "当前批次需要重做，请重新冻结后再打印"; display: block; padding: 24px; color: #b84f32; font-size: 16px; }
+  .page { padding: 0; }
+  .panel, .report-sheet { border: 0; box-shadow: none; overflow: visible !important; }
+}
 
 @media (max-width: 760px) {
   .page { padding: 12px; }

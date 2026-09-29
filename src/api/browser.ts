@@ -24,6 +24,23 @@ export const worker = setupWorker(
     issue.history.push({ at: '刚刚', actor: '当前用户', action: `复测${body.result}`, detail: body.note })
     return HttpResponse.json(issue)
   }),
+  http.post('/api/issues/merge', async ({ request }) => {
+    const body = (await request.json()) as { keys: string[] }
+    const primary = issues.find((issue) => issue.key === body.keys[0])
+    if (!primary) return new HttpResponse(null, { status: 404 })
+    issues = issues.map((issue) =>
+      body.keys.includes(issue.key)
+        ? {
+            ...issue,
+            rootCause: primary.rootCause,
+            status: issue.key === primary.key ? issue.status : '不适用',
+            mergedKeys: issue.key === primary.key ? body.keys.slice(1) : [primary.key],
+            history: [...issue.history, { at: '刚刚', actor: '当前用户', action: '重复问题合并', detail: `合并至 ${primary.key}` }],
+          }
+        : issue,
+    )
+    return HttpResponse.json({ updated: body.keys.length })
+  }),
   http.post('/api/issues/bulk-assign', async ({ request }) => {
     const body = (await request.json()) as { keys: string[]; team: string; owner: string; dueDate: string; priority: string }
     issues = issues.map((issue) =>

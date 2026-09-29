@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Issue } from '../api/types'
+import type { Issue, ReportBatch } from '../api/types'
 import { seedIssues } from '../api/seed'
 
 type SavedFilter = { id: string; name: string; query: string; site: string; status: string; priority: string }
 
 type WorkspaceState = {
   issues: Issue[]
+  reportBatches: ReportBatch[]
   selectedKeys: string[]
   savedFilters: SavedFilter[]
   draft: string
@@ -17,6 +18,8 @@ type WorkspaceState = {
   removeFilter: (id: string) => void
   setDraft: (draft: string) => void
   mergeIssues: (keys: string[]) => void
+  bulkAssignIssues: (input: { keys: string[]; team: string; owner: string; dueDate: string; priority: Issue['priority'] }) => void
+  addReportBatch: (batch: ReportBatch) => void
   updateIssue: (issue: Issue) => void
 }
 
@@ -24,6 +27,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set) => ({
       issues: structuredClone(seedIssues),
+      reportBatches: [],
       selectedKeys: [],
       savedFilters: [
         { id: 'f1', name: 'P0/P1 未关闭', query: '', site: '', status: '', priority: 'P0' },
@@ -55,6 +59,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             selectedKeys: [],
           }
         }),
+      bulkAssignIssues: ({ keys, team, owner, dueDate, priority }) =>
+        set((state) => ({
+          issues: state.issues.map((issue) =>
+            keys.includes(issue.key)
+              ? {
+                  ...issue,
+                  team,
+                  owner,
+                  dueDate,
+                  priority,
+                  status: '修复中',
+                  history: [...issue.history, { at: '刚刚', actor: '当前用户', action: '批量分配', detail: `指派至 ${team} / ${owner}` }],
+                }
+              : issue,
+          ),
+          selectedKeys: [],
+        })),
+      addReportBatch: (batch) => set((state) => ({ reportBatches: [...state.reportBatches, structuredClone(batch)] })),
       updateIssue: (updated) => set((state) => ({ issues: state.issues.map((issue) => (issue.key === updated.key ? updated : issue)) })),
     }),
     {

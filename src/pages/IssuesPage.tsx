@@ -32,6 +32,7 @@ export default function IssuesPage() {
   const saveFilter = useWorkspaceStore((state) => state.saveFilter)
   const removeFilter = useWorkspaceStore((state) => state.removeFilter)
   const mergeIssues = useWorkspaceStore((state) => state.mergeIssues)
+  const bulkAssignIssues = useWorkspaceStore((state) => state.bulkAssignIssues)
   const [filters, setFilters] = useState({ query: '', site: '', status: '', priority: '' })
   const [detail, setDetail] = useState<Issue | null>(null)
   const [assignOpen, setAssignOpen] = useState(false)
@@ -148,10 +149,15 @@ export default function IssuesPage() {
       <Modal title="批量分配整改项" open={assignOpen} onCancel={() => setAssignOpen(false)} onOk={() => form.submit()} okText="确认分配">
         <Form form={form} layout="vertical" onFinish={async (values) => {
           await axios.post('/api/issues/bulk-assign', { keys: selectedKeys, ...values, dueDate: values.dueDate.format('YYYY-MM-DD') })
+          bulkAssignIssues({
+            keys: selectedKeys,
+            team: values.team,
+            owner: values.owner,
+            dueDate: values.dueDate.format('YYYY-MM-DD'),
+            priority: values.priority,
+          })
           message.success(`已分配 ${selectedKeys.length} 条问题`)
-          setSelectedKeys([])
           setAssignOpen(false)
-          window.location.reload()
         }}>
           <Form.Item name="team" label="目标团队" rules={[{ required: true }]}><Select options={['前端基础组件组', '结算体验组', '数据可视化组', '供应链前端组'].map((value) => ({ value }))} /></Form.Item>
           <Form.Item name="owner" label="负责人" rules={[{ required: true }]}><Input placeholder="输入负责人姓名" /></Form.Item>
@@ -162,7 +168,12 @@ export default function IssuesPage() {
         </Form>
       </Modal>
 
-      <Modal title="合并为同一整改项" open={mergeOpen} onCancel={() => setMergeOpen(false)} onOk={() => { mergeIssues(selectedKeys); setMergeOpen(false); message.success('问题已按根因合并，子项仍可追溯') }} okText="确认合并">
+      <Modal title="合并为同一整改项" open={mergeOpen} onCancel={() => setMergeOpen(false)} onOk={async () => {
+        await axios.post('/api/issues/merge', { keys: selectedKeys })
+        mergeIssues(selectedKeys)
+        setMergeOpen(false)
+        message.success('问题已按根因合并，子项仍可追溯')
+      }} okText="确认合并">
         <Typography.Paragraph>将以 <Typography.Text code>{selectedKeys[0]}</Typography.Text> 为主问题，其余 {selectedKeys.length - 1} 项保留历史并关联到该主问题。</Typography.Paragraph>
         <Space wrap>{selectedKeys.map((key) => <Tag key={key}>{key}</Tag>)}</Space>
       </Modal>
