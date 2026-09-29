@@ -1,9 +1,20 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Issue } from '../api/types'
-import { seedIssues } from '../api/seed'
+import dayjs from 'dayjs'
+import type { DiffChange, Issue, ReportBatch } from '../api/types'
+import { seedIssues, seedBatches } from '../api/seed'
+import { evaluateBatch, snapshotIssue } from '../api/batches'
 
 type SavedFilter = { id: string; name: string; query: string; site: string; status: string; priority: string }
+
+type FreezeInput = {
+  name: string
+  keys: string[]
+  changes: DiffChange[]
+  baselineVersion: string
+  candidateVersion: string
+  note: string
+}
 
 type WorkspaceState = {
   issues: Issue[]
@@ -11,6 +22,7 @@ type WorkspaceState = {
   savedFilters: SavedFilter[]
   draft: string
   mergeKeys: string[]
+  batches: ReportBatch[]
   setIssues: (issues: Issue[]) => void
   setSelectedKeys: (keys: string[]) => void
   saveFilter: (filter: Omit<SavedFilter, 'id'>) => void
@@ -18,11 +30,12 @@ type WorkspaceState = {
   setDraft: (draft: string) => void
   mergeIssues: (keys: string[]) => void
   updateIssue: (issue: Issue) => void
+  freezeBatch: (input: FreezeInput) => string
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       issues: structuredClone(seedIssues),
       selectedKeys: [],
       savedFilters: [
@@ -31,6 +44,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       ],
       draft: 'A11Y-1048：需同时验证 Esc 关闭与 Tab/Shift+Tab 环绕顺序，移动端抽屉也需复测。',
       mergeKeys: [],
+      batches: structuredClone(seedBatches),
       setIssues: (issues) => set({ issues }),
       setSelectedKeys: (selectedKeys) => set({ selectedKeys }),
       saveFilter: (filter) => set((state) => ({ savedFilters: [...state.savedFilters, { ...filter, id: crypto.randomUUID() }] })),
@@ -56,6 +70,45 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
         }),
       updateIssue: (updated) => set((state) => ({ issues: state.issues.map((issue) => (issue.key === updated.key ? updated : issue)) })),
+      freezeBatch: (input) => {
+        const id = `RPT-${dayjs().format('YYYYMMDD-HHmmss')}`
+        const frozenAt = dayjs().format('YYYY-MM-DD HH:mm')
+        const { issues, batches } = get()
+        const items = input.keys
+          .map((key) => issues.find((issue) => issue.key === key))
+          .filter((issue): issue is Issue => Boolean(issue))
+          .map(snapshotIssue)
+
+        const newBatch: ReportBatch = {
+          id,
+          name: input.name,
+          frozenAt,
+          frozenBy: '当前用户 / 审核员',
+          baselineVersion: input.baselineVersion,
+          candidateVersion: input.candidateVersion,
+          note: input.note,
+          items,
+          changes: input.changes,
+          state: '当前有效',
+          archivedBlockers: [],
+        }
+
+        // 旧批次全部归档保留，并在归档瞬间固化挡批原因，详情可追溯
+        const archived = batches.map((batch) =>
+          batch.state === '已归档'
+            ? batch
+            : {
+                ...batch,
+                state: '已归档' as const,
+                supersededBy: id,
+                supersededAt: frozenAt,
+                archivedBlockers: evaluateBatch(batch, issues),
+              },
+        )
+
+        set({ batches: [newBatch, ...archived] })
+        return id
+      },
     }),
     {
       name: 'accessibility-remediation-v1',

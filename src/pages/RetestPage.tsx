@@ -10,9 +10,13 @@ export default function RetestPage() {
   useIssues()
   const issues = useWorkspaceStore((state) => state.issues)
   const updateIssue = useWorkspaceStore((state) => state.updateIssue)
+  const batches = useWorkspaceStore((state) => state.batches)
   const queue = issues.filter((item) => ['待复测', '已退回'].includes(item.status))
   const [active, setActive] = useState<Issue | null>(queue[0] ?? null)
   const [form] = Form.useForm()
+
+  const affectedBatches = (key: string) =>
+    batches.filter((batch) => batch.state !== '已归档' && batch.items.some((item) => item.key === key))
 
   const submit = async (values: { result: '已通过' | '已退回' | '不适用'; note: string; environment: string }) => {
     if (!active) return
@@ -21,6 +25,13 @@ export default function RetestPage() {
     setActive(data)
     form.resetFields()
     message.success(`复测结果已记录：${values.result}`)
+    const blocked = affectedBatches(active.key)
+    if (blocked.length) {
+      message.warning({
+        content: `报告批次 ${blocked.map((batch) => batch.id).join('、')} 因本次复测需重做，已不能导出为当前结论`,
+        duration: 5,
+      })
+    }
   }
 
   const columns: ColumnsType<Issue> = [
@@ -51,6 +62,15 @@ export default function RetestPage() {
 
         <div className="panel review-box">
           <Typography.Title level={4}>{active?.key ?? '暂无可复测项'}</Typography.Title>
+          {active && affectedBatches(active.key).length > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 14 }}
+              message={`提交复测将使批次 ${affectedBatches(active.key).map((batch) => batch.id).join('、')} 标记为需重做`}
+              description="这些批次冻结的结论未包含本次复测，提交后原批次不能继续导出为当前结论。"
+            />
+          )}
           {active && (
             <>
               <Descriptions size="small" column={1} bordered>

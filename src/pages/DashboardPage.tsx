@@ -1,13 +1,19 @@
-import { Button, Progress, Space, Tag, Typography } from 'antd'
+import { Alert, Button, Progress, Space, Tag, Typography } from 'antd'
 import { ArrowRightOutlined, CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useIssues } from '../api/useIssues'
 import { useWorkspaceStore } from '../store/useWorkspaceStore'
+import { getBatchState } from '../api/batches'
 
 export default function DashboardPage() {
   useIssues()
   const issues = useWorkspaceStore((state) => state.issues)
+  const batches = useWorkspaceStore((state) => state.batches)
   const navigate = useNavigate()
+  const staleBatches = batches
+    .filter((batch) => batch.state !== '已归档')
+    .map((batch) => ({ batch, ...getBatchState(batch, issues) }))
+    .filter((item) => item.state === '需重做')
   const open = issues.filter((item) => !['已通过', '不适用'].includes(item.status))
   const passed = issues.filter((item) => item.status === '已通过').length
   const critical = issues.filter((item) => item.impact === '致命' || item.impact === '严重').length
@@ -35,8 +41,28 @@ export default function DashboardPage() {
         <div className="metric-card"><span>开放问题</span><strong>{open.length}</strong><small>{issues.length} 条总记录</small></div>
         <div className="metric-card"><span>严重 / 致命</span><strong style={{ color: '#b84f32' }}>{critical}</strong><small>需优先排期</small></div>
         <div className="metric-card"><span>复测通过率</span><strong>{coverage}%</strong><small>当前版本口径</small></div>
-        <div className="metric-card"><span>覆盖站点</span><strong>{bySite.length}</strong><small>统一 WCAG 2.2 AA</small></div>
+        <div className="metric-card"><span>报告批次</span><strong>{batches.length}</strong><small>{staleBatches.length} 个需重做</small></div>
       </div>
+
+      {staleBatches.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 14 }}
+          message={`${staleBatches.length} 个已冻结批次与当前台账不一致，评审报告不能继续沿用`}
+          description={
+            <Space direction="vertical" size={4}>
+              {staleBatches.map(({ batch, blockers }) => (
+                <span key={batch.id}>
+                  <Typography.Text strong>{batch.id}</Typography.Text>（{batch.name}）：{blockers.length} 项挡批原因，
+                  <Typography.Link onClick={() => navigate(`/report?batch=${batch.id}`)}>查看详情</Typography.Link>
+                  或<Typography.Link onClick={() => navigate('/versions')}>重新冻结</Typography.Link>。
+                </span>
+              ))}
+            </Space>
+          }
+        />
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(300px,.8fr)', gap: 14 }}>
         <div className="panel">

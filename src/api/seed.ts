@@ -1,4 +1,4 @@
-import type { Issue } from './types'
+import type { BatchIssueSnapshot, Issue, ReportBatch } from './types'
 
 const commonHistory = (title: string) => [
   { at: '09-22 10:35', actor: '李予 / 审核员', action: '创建问题', detail: `录入 ${title}，并关联页面录屏。` },
@@ -115,5 +115,59 @@ export const seedIssues: Issue[] = [
     fixNote: '计划仅增加视觉错误颜色。',
     retestRecords: [{ id: 'RT-31', actor: '李予', result: '退回', note: '仍需接入 aria-live，并验证字段 aria-describedby。', at: '09-28 11:05' }],
     history: commonHistory('表单错误提示'),
+  },
+]
+
+/** 按冻结时点的台账口径构造快照，override 用于还原冻结后才发生的变化 */
+const frozenSnapshot = (key: string, override: Partial<BatchIssueSnapshot> = {}): BatchIssueSnapshot => {
+  const issue = seedIssues.find((item) => item.key === key)!
+  return {
+    key: issue.key,
+    title: issue.title,
+    site: issue.site,
+    version: issue.version,
+    wcag: [...issue.wcag],
+    impact: issue.impact,
+    status: issue.status,
+    priority: issue.priority,
+    team: issue.team,
+    owner: issue.owner,
+    dueDate: issue.dueDate,
+    fixNote: issue.fixNote,
+    retestEnv: issue.retestEnv,
+    retestRecords: structuredClone(issue.retestRecords),
+    mergedKeys: [...issue.mergedKeys],
+    ...override,
+  }
+}
+
+/**
+ * 评审批次 RPT-20260928-0950 冻结于 09-28 上午；
+ * 随后 A11Y-1083 被复测退回、A11Y-1061 改派给其他团队，
+ * 因此按当前台账实时校验该批次为「需重做」，不能再作为当前结论导出。
+ */
+export const seedBatches: ReportBatch[] = [
+  {
+    id: 'RPT-20260928-0950',
+    name: 'v4.18-rc2 无障碍评审结论（第一次提交）',
+    frozenAt: '2026-09-28 09:50',
+    frozenBy: '李予 / 审核员',
+    baselineVersion: 'v4.18',
+    candidateVersion: 'v4.18-rc2',
+    note: '提交版本评审会使用，覆盖本轮 rc2 采纳的 4 项变更；冻结后台账有更新时须重新冻结。',
+    state: '当前有效',
+    archivedBlockers: [],
+    changes: [
+      { key: 'A11Y-1048', field: '修复状态', baseline: '待复测', candidate: '已提交复测材料', risk: '低' },
+      { key: 'A11Y-1074', field: '图表色板', baseline: '#98B7AF / 对比度 2.6:1', candidate: '#1D6570 / 对比度 5.1:1 + 纹理', risk: '低' },
+      { key: 'A11Y-1083', field: '错误提示实现', baseline: '视觉错误颜色', candidate: 'aria-live + aria-describedby', risk: '中' },
+      { key: 'A11Y-1061', field: '排期归属', baseline: '未排期 / 待分配', candidate: '并入共用 Drawer 修复批次（基础组件组）', risk: '低' },
+    ],
+    items: [
+      frozenSnapshot('A11Y-1048'),
+      frozenSnapshot('A11Y-1074'),
+      frozenSnapshot('A11Y-1083', { status: '待复测', retestRecords: [] }),
+      frozenSnapshot('A11Y-1061', { team: '前端基础组件组', owner: '何沐' }),
+    ],
   },
 ]

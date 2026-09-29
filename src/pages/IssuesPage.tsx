@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
 import {
   Button,
   DatePicker,
@@ -18,6 +19,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { FilterOutlined, MergeCellsOutlined, SaveOutlined, TeamOutlined } from '@ant-design/icons'
 import { useIssues } from '../api/useIssues'
 import { useWorkspaceStore } from '../store/useWorkspaceStore'
+import { batchStateColor, getBatchState } from '../api/batches'
 import type { Issue } from '../api/types'
 
 const impactColor: Record<string, string> = { 致命: 'red', 严重: 'volcano', 中等: 'gold', 轻微: 'blue' }
@@ -25,6 +27,7 @@ const statusColor: Record<string, string> = { 待分配: 'default', 修复中: '
 
 export default function IssuesPage() {
   useIssues()
+  const navigate = useNavigate()
   const issues = useWorkspaceStore((state) => state.issues)
   const selectedKeys = useWorkspaceStore((state) => state.selectedKeys)
   const setSelectedKeys = useWorkspaceStore((state) => state.setSelectedKeys)
@@ -32,6 +35,7 @@ export default function IssuesPage() {
   const saveFilter = useWorkspaceStore((state) => state.saveFilter)
   const removeFilter = useWorkspaceStore((state) => state.removeFilter)
   const mergeIssues = useWorkspaceStore((state) => state.mergeIssues)
+  const batches = useWorkspaceStore((state) => state.batches)
   const [filters, setFilters] = useState({ query: '', site: '', status: '', priority: '' })
   const [detail, setDetail] = useState<Issue | null>(null)
   const [assignOpen, setAssignOpen] = useState(false)
@@ -137,6 +141,35 @@ export default function IssuesPage() {
               <dt>修复说明</dt><dd>{detail.fixNote ?? '开发尚未提交'}</dd>
               <dt>复测环境</dt><dd>{detail.retestEnv ?? '待开发提交'}</dd>
             </dl>
+            <div>
+              <Typography.Title level={5}>报告批次影响</Typography.Title>
+              {batches.filter((batch) => batch.items.some((item) => item.key === detail.key)).length === 0 && (
+                <Typography.Text type="secondary">该问题未被任何冻结批次包含。</Typography.Text>
+              )}
+              {batches
+                .filter((batch) => batch.items.some((item) => item.key === detail.key))
+                .map((batch) => {
+                  const evaluation = getBatchState(batch, issues)
+                  const blocking = evaluation.blockers.filter((blocker) => blocker.detail.startsWith(detail.key))
+                  return (
+                    <div key={batch.id} className="batch-impact-item">
+                      <Tag
+                        color={batchStateColor[evaluation.state]}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => navigate(`/report?batch=${batch.id}`)}
+                      >
+                        {batch.id} · {evaluation.state}
+                      </Tag>
+                      <Typography.Text style={{ fontSize: 12 }}>{batch.name}</Typography.Text>
+                      {blocking.length > 0 && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                          本问题把该批次挡下：{blocking.map((item) => item.detail).join('；')}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+            </div>
             <div>
               <Typography.Title level={5}>操作历史</Typography.Title>
               {detail.history.map((event, index) => <div className="timeline-item" key={index}><Typography.Text strong>{event.action}</Typography.Text><div>{event.detail}</div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{event.actor} · {event.at}</Typography.Text></div>)}
